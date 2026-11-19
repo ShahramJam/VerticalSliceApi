@@ -1,0 +1,11 @@
+@VerticalSliceApi_HostAddress = http://localhost:5136
+
+GET {{VerticalSliceApi_HostAddress}}/openapi/v1.json
+Accept: application/json
+
+###
+
+GET {{VerticalSliceApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
