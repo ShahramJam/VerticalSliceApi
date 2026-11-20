@@ -1,0 +1,45 @@
+@startuml
+title Create Student - Request Sequence
+autonumber
+
+actor "API client" as Client
+participant "ASP.NET Core\nexception handler" as ErrorHandler
+participant "CreateStudent.Endpoint" as Endpoint
+participant "MediatR (ISender)" as Sender
+participant "ValidationBehavior<CreateStudent.Command, int>" as Pipeline
+participant "CreateStudent.Validator" as Validator
+participant "CreateStudent.Handler" as Handler
+participant "SchoolDbContext" as Db
+database "SQL Server" as SqlServer
+
+Client -> ErrorHandler : POST /api/students
+ErrorHandler -> Endpoint : bind CreateStudent.Command
+Endpoint -> Sender : Send(command, ct)
+Sender -> Pipeline : Handle(command, next)
+Pipeline -> Validator : Validate(context)
+
+alt validation errors
+  Validator --> Pipeline : failures
+  Pipeline --> Sender : throws ValidationException
+  Sender --> Endpoint : exception propagates
+  Endpoint --> ErrorHandler : exception propagates
+  ErrorHandler --> Client : 400 Validation Failed\n{ Title, Errors }
+else valid command
+  Validator --> Pipeline : no failures
+  Pipeline -> Handler : next()
+  note right of Handler
+	Constructs Student(command fields),
+	adds it to db.Students, and saves.
+  end note
+  Handler -> Db : Students.Add(student)
+  Handler -> Db : SaveChangesAsync(ct)
+  Db -> SqlServer : INSERT Student
+  SqlServer --> Db : saved row and generated Id
+  Db --> Handler : save completed
+  Handler --> Pipeline : id
+  Pipeline --> Sender : id
+  Sender --> Endpoint : id
+  Endpoint --> ErrorHandler : 201 Created\nLocation: /api/students/{id}
+  ErrorHandler --> Client : 201 Created { Id }
+end
+@enduml

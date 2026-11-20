@@ -1,0 +1,109 @@
+@startuml
+title VerticalSliceApi - Component Architecture
+left to right direction
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+actor "API client" as ApiClient
+
+package "ASP.NET Core host" {
+  component "Program.cs\n(composition root)" as Program
+  component "HTTP exception handler\n(ValidationException -> 400)" as ErrorHandler
+  component "OpenAPI + Scalar\n(Development only)" as ApiDocs
+}
+
+interface IEndpoint
+
+package "Student feature slices" {
+  component "GetStudents.Endpoint\nGET /api/students" as GetStudentsEndpoint
+  component "CreateStudent.Endpoint\nPOST /api/students" as CreateStudentEndpoint
+  component "EnrollStudent.Endpoint\nPOST /api/students/{studentId:int}/courses/{courseId:int}" as EnrollStudentEndpoint
+}
+
+package "Course feature slices" {
+  component "GetCourses.Endpoint\nGET /api/courses" as GetCoursesEndpoint
+  component "CreateCourse.Endpoint\nPOST /api/courses" as CreateCourseEndpoint
+}
+
+interface ISender
+component "MediatR" as Mediator
+component "ValidationBehavior\n(open IPipelineBehavior)" as ValidationBehavior
+component "CreateStudent.Validator" as CreateStudentValidator
+component "CreateCourse.Validator" as CreateCourseValidator
+
+package "Feature handlers" {
+  component "GetStudents.Handler" as GetStudentsHandler
+  component "CreateStudent.Handler" as CreateStudentHandler
+  component "EnrollStudent.Handler" as EnrollStudentHandler
+  component "GetCourses.Handler" as GetCoursesHandler
+  component "CreateCourse.Handler" as CreateCourseHandler
+}
+
+package "Persistence" {
+	component "SchoolDbContext" as SchoolDbContext
+  component "EF Core DbContext" as EfDbContext
+  component "DbSeeder\nSeedAsync(DbContext)" as DbSeeder
+  database "SQL Server" as SqlServer
+}
+
+Program ..> IEndpoint : scans assembly and registers implementations
+IEndpoint <|.. GetStudentsEndpoint
+IEndpoint <|.. CreateStudentEndpoint
+IEndpoint <|.. EnrollStudentEndpoint
+IEndpoint <|.. GetCoursesEndpoint
+IEndpoint <|.. CreateCourseEndpoint
+
+Program --> GetStudentsEndpoint : resolves and maps
+Program --> CreateStudentEndpoint : resolves and maps
+Program --> EnrollStudentEndpoint : resolves and maps
+Program --> GetCoursesEndpoint : resolves and maps
+Program --> CreateCourseEndpoint : resolves and maps
+Program --> ErrorHandler : registers middleware
+Program --> ApiDocs : maps in Development
+Program --> SchoolDbContext : AddDbContext / UseSqlServer
+Program ..> DbSeeder : UseAsyncSeeding callback
+
+ApiClient --> GetStudentsEndpoint
+ApiClient --> CreateStudentEndpoint
+ApiClient --> EnrollStudentEndpoint
+ApiClient --> GetCoursesEndpoint
+ApiClient --> CreateCourseEndpoint
+
+GetStudentsEndpoint ..> ISender : Send(Query)
+CreateStudentEndpoint ..> ISender : Send(Command)
+EnrollStudentEndpoint ..> ISender : Send(Command)
+GetCoursesEndpoint ..> ISender : Send(Query)
+CreateCourseEndpoint ..> ISender : Send(Command)
+
+ISender <|.. Mediator
+Mediator --> ValidationBehavior : request pipeline
+ValidationBehavior ..> CreateStudentValidator : validates when registered
+ValidationBehavior ..> CreateCourseValidator : validates when registered
+ValidationBehavior --> GetStudentsHandler : next()
+ValidationBehavior --> CreateStudentHandler : next()
+ValidationBehavior --> EnrollStudentHandler : next()
+ValidationBehavior --> GetCoursesHandler : next()
+ValidationBehavior --> CreateCourseHandler : next()
+ValidationBehavior ..> ErrorHandler : throws ValidationException
+
+GetStudentsHandler --> SchoolDbContext : query
+CreateStudentHandler --> SchoolDbContext : add + save
+EnrollStudentHandler --> SchoolDbContext : load + update + save
+GetCoursesHandler --> SchoolDbContext : query
+CreateCourseHandler --> SchoolDbContext : add + save
+SchoolDbContext --|> EfDbContext
+SchoolDbContext --> SqlServer : EF Core provider
+DbSeeder ..> EfDbContext : callback receives context
+ErrorHandler --> ApiClient : HTTP 400 with validation errors
+
+note right of ValidationBehavior
+  Validators are registered from the assembly.
+  CreateStudent and CreateCourse have validators;
+  requests without validators continue directly.
+end note
+
+note right of SchoolDbContext
+  Program applies migrations at startup
+  only in the Development environment.
+end note
+@enduml

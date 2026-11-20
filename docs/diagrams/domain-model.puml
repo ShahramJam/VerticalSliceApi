@@ -1,0 +1,62 @@
+@startuml
+title VerticalSliceApi - Domain Model
+skinparam classAttributeIconSize 0
+
+package "VerticalSliceApi.Domain.Entities" {
+  class Student {
+	+Id : int
+	+FirstName : string
+	+LastName : string
+	+Email : string
+	+EnrolledAtUtc : DateTime
+	-_courses : List<Course>
+	+Courses : IReadOnlyCollection<Course>
+	-Student()
+	+Student(firstName : string, lastName : string, email : string)
+	+EnrollInCourse(course : Course) : void
+  }
+
+  class Course {
+	+Id : int
+	+Code : string
+	+Title : string
+	+Credits : int
+	-_students : List<Student>
+	+Students : IReadOnlyCollection<Student>
+	-Course()
+	+Course(code : string, title : string, credits : int)
+  }
+}
+
+package "VerticalSliceApi.Infrastructure.Persistence" {
+  class SchoolDbContext {
+	+Students : DbSet<Student>
+	+Courses : DbSet<Course>
+	#OnModelCreating(modelBuilder : ModelBuilder) : void
+  }
+}
+
+Student "0..*" -- "0..*" Course : enrolls in
+note on link
+  EF Core maps this many-to-many association
+  to the StudentCourses join table.
+end note
+
+SchoolDbContext ..> Student : DbSet<Student>
+SchoolDbContext ..> Course : DbSet<Course>
+
+note right of Student
+  Properties have public getters and private setters.
+  EnrollInCourse ignores a course whose ID
+  is already in the student's course collection.
+end note
+
+note right of Course
+  Properties have public getters and private setters.
+  The constructor uppercases Code.
+end note
+
+note right of SchoolDbContext
+  Email and Code have unique database indexes.
+end note
+@enduml

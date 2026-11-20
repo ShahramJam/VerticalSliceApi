@@ -1,0 +1,55 @@
+@startuml
+title Enroll Student in Course - Request Sequence
+autonumber
+
+actor "API client" as Client
+participant "EnrollStudent.Endpoint" as Endpoint
+participant "MediatR (ISender)" as Sender
+participant "ValidationBehavior<EnrollStudent.Command, bool>" as Pipeline
+participant "EnrollStudent.Handler" as Handler
+participant "SchoolDbContext" as Db
+database "SQL Server" as SqlServer
+participant Student
+participant Course
+
+Client -> Endpoint : POST /api/students/{studentId:int}/courses/{courseId:int}
+Endpoint -> Sender : Send(Command(studentId, courseId), ct)
+Sender -> Pipeline : Handle(command, next)
+note over Pipeline
+  No validator is registered for this command,
+  so the behavior calls next() directly.
+end note
+Pipeline -> Handler : next()
+
+Handler -> Db : Load student with Courses
+Db -> SqlServer : SELECT Student + enrolled Courses
+SqlServer --> Db : student and courses, or no student
+Db --> Handler : student?
+Handler -> Db : Find Course by courseId
+Db -> SqlServer : SELECT Course
+SqlServer --> Db : course, or no course
+Db --> Handler : course?
+
+alt student or course is missing
+  Handler --> Pipeline : false
+  Pipeline --> Sender : false
+  Sender --> Endpoint : false
+  Endpoint --> Client : 404 Not Found
+else both exist
+  Handler -> Student : EnrollInCourse(course)
+  note right of Student
+	Adds the course only when its ID
+	is not already enrolled.
+  end note
+  Handler -> Db : SaveChangesAsync(ct)
+  opt enrollment is new
+	Db -> SqlServer : INSERT StudentCourses row
+	SqlServer --> Db : relationship persisted
+  end
+  Db --> Handler : save completed
+  Handler --> Pipeline : true
+  Pipeline --> Sender : true
+  Sender --> Endpoint : true
+  Endpoint --> Client : 204 No Content
+end
+@enduml
